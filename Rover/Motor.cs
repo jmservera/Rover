@@ -13,10 +13,9 @@ namespace Rover
 
             _motorGpioPinA = gpio.OpenPin(gpioPinIn1);
             _motorGpioPinB = gpio.OpenPin(gpioPinIn2);
-            _motorGpioPinA.Write(GpioPinValue.Low);
-            _motorGpioPinB.Write(GpioPinValue.Low);
             _motorGpioPinA.SetDriveMode(GpioPinDriveMode.Output);
             _motorGpioPinB.SetDriveMode(GpioPinDriveMode.Output);
+            Stop();
         }
 
         public void MoveForward()

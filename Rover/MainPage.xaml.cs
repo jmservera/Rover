@@ -46,11 +46,11 @@ namespace Rover
 
         private async void DoWork(object sender, DoWorkEventArgs e)
         {
+            WriteLog("Initializing...");
             var driver = new TwoMotorsDriver(new Motor(27, 22), new Motor(5, 6));
             var ultrasonicDistanceSensor = new UltrasonicDistanceSensor(23, 24);
             await ultrasonicDistanceSensor.InitAsync();
-
-            WriteLog("Moving forward");
+            WriteLog("Sensor initialized");
 
             while (!_finish)
             {
@@ -65,7 +65,7 @@ namespace Rover
                     if (distance > 35.0)
                         continue;
 
-                    WriteLog($"Obstacle found at {distance:F2} cm or less. Turning right");
+                    //WriteLog($"Obstacle found at {distance:F2} cm or less. Turning right");
                     WriteData("Turn Right", distance);
 
                     await driver.TurnRightAsync();
@@ -86,6 +86,8 @@ namespace Rover
             await _dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
             {
                 Log.Text += $"{text} | ";
+                if (Log.Text.Length > 500)
+                    Log.Text = Log.Text.Substring(100);
             });
         }
 
