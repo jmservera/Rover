@@ -28,26 +28,45 @@ namespace Rover
         {
             return await Task.Run(() =>
             {
-                double distance = double.MaxValue;
+                double distance = 0;
                 // turn on the pulse
                 gpioPinTrig.Write(GpioPinValue.High);
                 var sw = Stopwatch.StartNew();
-                Task.Delay(TimeSpan.FromTicks(100)).Wait();
-                sw.Stop();
-                gpioPinTrig.Write(GpioPinValue.Low);
-
-                if (SpinWait.SpinUntil(() => { return gpioPinEcho.Read() != GpioPinValue.Low; }, timeoutInMilliseconds))
+                while (distance < 9)
                 {
-                    var stopwatch = Stopwatch.StartNew();
-                    while (stopwatch.ElapsedMilliseconds < timeoutInMilliseconds && gpioPinEcho.Read() == GpioPinValue.High)
+                    distance = sw.Elapsed.TotalSeconds * 1000000;
+                }
+                Debug.WriteLine($"pulse: {sw.Elapsed.TotalSeconds * 1000000} µs");
+                sw.Restart();
+                bool high = false;
+                gpioPinTrig.Write(GpioPinValue.Low);
+                while (sw.Elapsed.TotalMilliseconds < timeoutInMilliseconds)
+                {
+                    if (gpioPinEcho.Read() != GpioPinValue.Low)
                     {
-                        distance = stopwatch.Elapsed.TotalSeconds * 17150;
+                        high = true;
+                        break;
                     }
-                    stopwatch.Stop();
-                    Debug.WriteLine($"{sw.Elapsed.TotalSeconds} {distance}");
+                }
+                if (high)
+                {
+                    sw.Restart();
+                    while (gpioPinEcho.Read() == GpioPinValue.High)
+                    {
+                        distance = sw.Elapsed.TotalSeconds * 17150;
+                        if(sw.ElapsedMilliseconds > timeoutInMilliseconds)
+                        {
+                            throw new TimeoutException("Could not read from sensor");
+                        }
+                    }
+                    Debug.WriteLine($"{distance} cm");
+                    sw.Stop();
                     return distance;
                 }
-                throw new TimeoutException("Could not read from sensor");
+                else
+                {
+                    throw new TimeoutException("Could not read from sensor");
+                }
             });
         }
 

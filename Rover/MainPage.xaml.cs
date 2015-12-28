@@ -1,5 +1,6 @@
 ﻿using System;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Threading.Tasks;
 using Windows.UI.Core;
 using Windows.UI.Xaml.Controls;
@@ -44,6 +45,10 @@ namespace Rover
             _finish = true;
         }
 
+        bool turnRight = true;
+        int turnCount;
+        int exCount;
+
         private async void DoWork(object sender, DoWorkEventArgs e)
         {
             WriteLog("Initializing...");
@@ -52,6 +57,7 @@ namespace Rover
             await ultrasonicDistanceSensor.InitAsync();
             WriteLog("Sensor initialized");
 
+            Stopwatch w = new Stopwatch();
             while (!_finish)
             {
                 try
@@ -60,23 +66,51 @@ namespace Rover
 
                     await Task.Delay(200);
 
-                    var distance = await ultrasonicDistanceSensor.GetDistanceInCmAsync(1000);
+                    var distance = await ultrasonicDistanceSensor.GetDistanceInCmAsync(100);
                     WriteData("Forward", distance);
                     if (distance > 35.0)
                         continue;
 
-                    //WriteLog($"Obstacle found at {distance:F2} cm or less. Turning right");
-                    WriteData("Turn Right", distance);
+                    if (w.ElapsedMilliseconds < 1000)
+                    {
+                        if (turnCount++ > 2)
+                        {
+                            turnRight = !turnRight;
+                            turnCount = 0;
+                        }
+                    }
 
-                    await driver.TurnRightAsync();
+                    if (turnRight)
+                    {
+                        //WriteLog($"Obstacle found at {distance:F2} cm or less. Turning right");
+                        WriteData("Turn Right", distance);
 
+                        await driver.TurnRightAsync();
+                    }
+                    else
+                    {
+                        WriteData("Turn Left", distance);
+
+                        await driver.TurnLeftAsync();
+                    }
+                    w.Restart();
                     WriteLog("Moving forward");
                 }
                 catch (Exception ex)
                 {
                     WriteLog(ex.Message);
-                    driver.Stop();
-                    WriteData("Stop", -1);
+                    if (exCount++ > 4)
+                    {
+                        driver.Stop();
+                        WriteData("Stop", -1);
+                        exCount = 0;
+                    }
+                    else
+                    {
+                        driver.MoveBackward();
+                        await Task.Delay(300);
+                        WriteData("Back", -1);
+                    }
                 }
             }
         }
