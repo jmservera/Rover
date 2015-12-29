@@ -32,6 +32,8 @@ namespace Rover
                 while (true)
                 {
                     double distance = 0;
+                    bool high = false;
+
                     // turn on the pulse
                     gpioPinTrig.Write(GpioPinValue.High);
                     var sw = Stopwatch.StartNew();
@@ -39,10 +41,9 @@ namespace Rover
                     {
                         distance = sw.Elapsed.TotalSeconds * 1000000;
                     }
-                    Debug.WriteLine($"pulse: {sw.Elapsed.TotalSeconds * 1000000} µs");
-                    sw.Restart();
-                    bool high = false;
                     gpioPinTrig.Write(GpioPinValue.Low);
+                    //Debug.WriteLine($"pulse: {sw.Elapsed.TotalSeconds * 1000000} µs");
+                    sw.Restart();
                     while (sw.Elapsed.TotalMilliseconds < timeoutInMilliseconds)
                     {
                         if (gpioPinEcho.Read() != GpioPinValue.Low)
@@ -59,25 +60,25 @@ namespace Rover
                             distance = sw.Elapsed.TotalSeconds * 17150;
                             if (sw.ElapsedMilliseconds > timeoutInMilliseconds)
                             {
-                                if (retries-- == 0)
-                                {
-                                    throw new TimeoutException("Could not read from sensor");
-                                }
-                                else
-                                {
-                                    break;
-                                }
+                                throw new TimeoutException("Could not read from sensor");
                             }
                         }
-                        Debug.WriteLine($"{distance} cm");
-                        sw.Stop();
-                        return distance;
+                        //Debug.WriteLine($"{distance} cm");
+                        if (distance > 0)
+                        {
+                            return distance;
+                        }
                     }
                     else
                     {
                         if (retries-- == 0)
                         {
                             throw new TimeoutException("Could not read from sensor");
+                        }
+                        else
+                        {
+                            Debug.WriteLine($"retry {retries}");
+                            Task.Delay(100).Wait();
                         }
                     }
                 }
