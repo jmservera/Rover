@@ -14,18 +14,22 @@ namespace Rover
 {
     public sealed class EngineController : IDisposable
     {
-        string offHtmlString = "<html><head><title>Blinky App</title></head><body><form action=\"blinky.html\" method=\"GET\"><input type=\"radio\" name=\"state\" value=\"on\" onclick=\"this.form.submit()\"> On<br><input type=\"radio\" name=\"state\" value=\"off\" checked onclick=\"this.form.submit()\"> Off</form></body></html>";
-        string onHtmlString = "<html><head><title>Blinky App</title></head><body><form action=\"blinky.html\" method=\"GET\"><input type=\"radio\" name=\"state\" value=\"on\" checked onclick=\"this.form.submit()\"> On<br><input type=\"radio\" name=\"state\" value=\"off\" onclick=\"this.form.submit()\"> Off</form></body></html>";
+        string stopHtmlString = "<html><head><title>Rover</title></head><body><form action=\"rover\" method=\"GET\"><input type=\"radio\" name=\"state\" value=\"start\" onclick=\"this.form.submit()\"> Start<br><input type=\"radio\" name=\"state\" value=\"stop\" checked onclick=\"this.form.submit()\"> Stop</form></body></html>";
+        string startHtmlString = "<html><head><title>Rover</title></head><body><form action=\"rover\" method=\"GET\"><input type=\"radio\" name=\"state\" value=\"start\" checked onclick=\"this.form.submit()\"> Start<br><input type=\"radio\" name=\"state\" value=\"stop\" onclick=\"this.form.submit()\"> Stop</form></body></html>";
         private const uint BufferSize = 8192;
-        private int port = 8000;
+        private string port = "8000";
         private readonly StreamSocketListener listener;
-        private AppServiceConnection appServiceConnection;
 
-        public EngineController(int serverPort)
+        public event EventHandler<string> StateChanged;
+
+        public EngineController(string serverPort)
         {
             listener = new StreamSocketListener();
-            port = serverPort;
             listener.ConnectionReceived += (s, e) => ProcessRequestAsync(e.Socket);
+            port = serverPort;
+        }
+        public EngineController(int serverPort):this(serverPort.ToString())
+        {
         }
 
         public void StartServer()
@@ -75,25 +79,26 @@ namespace Rover
             // See if the request is for blinky.html, if yes get the new state
             string state = "Unspecified";
             bool stateChanged = false;
-            if (request.Contains("blinky.html?state=on"))
+            if (request.Contains("rover?state=start"))
             {
-                state = "On";
+                state = "Start";
                 stateChanged = true;
             }
-            else if (request.Contains("blinky.html?state=off"))
+            else if (request.Contains("rover?state=stop"))
             {
-                state = "Off";
+                state = "Stop";
                 stateChanged = true;
             }
 
             if (stateChanged)
             {
-                var updateMessage = new ValueSet();
-                updateMessage.Add("State", state);
-                var responseStatus = await appServiceConnection.SendMessageAsync(updateMessage);
+                if (StateChanged != null)
+                {
+                    StateChanged(this, state);
+                }
             }
 
-            string html = state == "On" ? onHtmlString : offHtmlString;
+            string html = state == "Start" ? startHtmlString : stopHtmlString;
             // Show the html 
             using (Stream resp = os.AsStreamForWrite())
             {

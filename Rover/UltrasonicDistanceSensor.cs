@@ -28,44 +28,58 @@ namespace Rover
         {
             return await Task.Run(() =>
             {
-                double distance = 0;
-                // turn on the pulse
-                gpioPinTrig.Write(GpioPinValue.High);
-                var sw = Stopwatch.StartNew();
-                while (distance < 9)
+                int retries = 2;
+                while (true)
                 {
-                    distance = sw.Elapsed.TotalSeconds * 1000000;
-                }
-                Debug.WriteLine($"pulse: {sw.Elapsed.TotalSeconds * 1000000} µs");
-                sw.Restart();
-                bool high = false;
-                gpioPinTrig.Write(GpioPinValue.Low);
-                while (sw.Elapsed.TotalMilliseconds < timeoutInMilliseconds)
-                {
-                    if (gpioPinEcho.Read() != GpioPinValue.Low)
+                    double distance = 0;
+                    // turn on the pulse
+                    gpioPinTrig.Write(GpioPinValue.High);
+                    var sw = Stopwatch.StartNew();
+                    while (distance < 9)
                     {
-                        high = true;
-                        break;
+                        distance = sw.Elapsed.TotalSeconds * 1000000;
                     }
-                }
-                if (high)
-                {
+                    Debug.WriteLine($"pulse: {sw.Elapsed.TotalSeconds * 1000000} µs");
                     sw.Restart();
-                    while (gpioPinEcho.Read() == GpioPinValue.High)
+                    bool high = false;
+                    gpioPinTrig.Write(GpioPinValue.Low);
+                    while (sw.Elapsed.TotalMilliseconds < timeoutInMilliseconds)
                     {
-                        distance = sw.Elapsed.TotalSeconds * 17150;
-                        if(sw.ElapsedMilliseconds > timeoutInMilliseconds)
+                        if (gpioPinEcho.Read() != GpioPinValue.Low)
+                        {
+                            high = true;
+                            break;
+                        }
+                    }
+                    if (high)
+                    {
+                        sw.Restart();
+                        while (gpioPinEcho.Read() == GpioPinValue.High)
+                        {
+                            distance = sw.Elapsed.TotalSeconds * 17150;
+                            if (sw.ElapsedMilliseconds > timeoutInMilliseconds)
+                            {
+                                if (retries-- == 0)
+                                {
+                                    throw new TimeoutException("Could not read from sensor");
+                                }
+                                else
+                                {
+                                    break;
+                                }
+                            }
+                        }
+                        Debug.WriteLine($"{distance} cm");
+                        sw.Stop();
+                        return distance;
+                    }
+                    else
+                    {
+                        if (retries-- == 0)
                         {
                             throw new TimeoutException("Could not read from sensor");
                         }
                     }
-                    Debug.WriteLine($"{distance} cm");
-                    sw.Stop();
-                    return distance;
-                }
-                else
-                {
-                    throw new TimeoutException("Could not read from sensor");
                 }
             });
         }
