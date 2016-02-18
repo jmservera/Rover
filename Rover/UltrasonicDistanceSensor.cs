@@ -1,61 +1,103 @@
 ﻿using System;
 using System.Diagnostics;
-using System.Threading;
+using System.Runtime;
 using System.Threading.Tasks;
 using Windows.Devices.Gpio;
 
 namespace Rover
 {
-    public class UltrasonicDistanceSensor
+    public class UltrasonicDistanceSensor : IDisposable
     {
-        private readonly GpioPin _gpioPinTrig;
-        // ReSharper disable once PrivateFieldCanBeConvertedToLocalVariable
-        private readonly GpioPin _gpioPinEcho;
-        bool _init;
-
+        private GpioPin gpioPinTrig;
+        private GpioPin gpioPinEcho;
+        bool init;
+        int trigGpioPin, echoGpioPin;
+        public bool Initialized { get { return init; } }
         public UltrasonicDistanceSensor(int trigGpioPin, int echoGpioPin)
         {
-            var gpio = GpioController.GetDefault();
-
-            _gpioPinTrig = gpio.OpenPin(trigGpioPin);
-            _gpioPinEcho = gpio.OpenPin(echoGpioPin);
-            _gpioPinTrig.SetDriveMode(GpioPinDriveMode.Output);
-            _gpioPinEcho.SetDriveMode(GpioPinDriveMode.Input);
-            _gpioPinTrig.Write(GpioPinValue.Low);
+            this.trigGpioPin = trigGpioPin;
+            this.echoGpioPin = echoGpioPin;
         }
 
         public async Task<double> GetDistanceInCmAsync(int timeoutInMilliseconds)
         {
             return await Task.Run(() =>
             {
-                double distance = double.MaxValue;
-                // turn on the pulse
-                _gpioPinTrig.Write(GpioPinValue.High);
-                Task.Delay(TimeSpan.FromTicks(100)).Wait();
-                _gpioPinTrig.Write(GpioPinValue.Low);
-
-                if (SpinWait.SpinUntil(() => { return _gpioPinEcho.Read() != GpioPinValue.Low; }, timeoutInMilliseconds))
+                GCLatencyMode oldMode = GCSettings.LatencyMode;
+                try
                 {
-                    var stopwatch = Stopwatch.StartNew();
-                    while (stopwatch.ElapsedMilliseconds < timeoutInMilliseconds && _gpioPinEcho.Read() == GpioPinValue.High)
+                    GCSettings.LatencyMode = GCLatencyMode.LowLatency;
+                    double distance = double.MaxValue;
+                    // turn on the pulse
+                    gpioPinTrig.Write(GpioPinValue.High);
+                    Task.Delay(TimeSpan.FromTicks(100)).Wait();
+                    gpioPinTrig.Write(GpioPinValue.Low);
+                    var sw = Stopwatch.StartNew();
+                    bool timeout = false;
+                    while (gpioPinEcho.Read() == GpioPinValue.Low)
                     {
-                        distance = stopwatch.Elapsed.TotalSeconds * 17150;
+                        if (sw.ElapsedMilliseconds > timeoutInMilliseconds)
+                        {
+                            timeout = true;
+                            break;
+                        }
                     }
-                    stopwatch.Stop();
-                    return distance;
+                    if (!timeout)
+                    {
+                        sw.Restart();
+                        while (sw.ElapsedMilliseconds < timeoutInMilliseconds && gpioPinEcho.Read() == GpioPinValue.High)
+                        {
+                            distance = sw.Elapsed.TotalSeconds * 17150;
+                        }
+                        Debug.WriteLine($"{sw.Elapsed.TotalSeconds} {distance}");
+                        return distance;
+                    }
+                    throw new TimeoutException("The sensor did not respond in time.");
                 }
-                throw new TimeoutException("Could not read from sensor");
+                finally
+                {
+                    GCSettings.LatencyMode = oldMode;
+                }
             });
         }
 
         public async Task InitAsync()
         {
-            if (!_init)
+            if (!init)
             {
-                //first time ensure the pin is low and wait two seconds
-                _gpioPinTrig.Write(GpioPinValue.Low);
-                await Task.Delay(2000);
-                _init = true;
+                var gpio = GpioController.GetDefault();
+
+                if (gpio != null)
+                {
+                    gpioPinTrig = gpio.OpenPin(trigGpioPin);
+                    gpioPinEcho = gpio.OpenPin(echoGpioPin);
+                    gpioPinTrig.SetDriveMode(GpioPinDriveMode.Output);
+                    gpioPinEcho.SetDriveMode(GpioPinDriveMode.Input);
+                    gpioPinTrig.Write(GpioPinValue.Low);
+
+                    //first time ensure the pin is low and wait two seconds
+                    gpioPinTrig.Write(GpioPinValue.Low);
+                    await Task.Delay(2000);
+                    init = true;
+                }
+                else
+                {
+                    throw new InvalidOperationException("Gpio not present");
+                }
+            }
+        }
+
+        public void Dispose()
+        {
+            if (gpioPinEcho != null)
+            {
+                gpioPinEcho.Dispose();
+                gpioPinEcho = null;
+            }
+            if (gpioPinTrig != null)
+            {
+                gpioPinTrig.Dispose();
+                gpioPinTrig = null;
             }
         }
     }
